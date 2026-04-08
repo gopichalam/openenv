@@ -1,5 +1,4 @@
 import os
-import json
 import requests
 from openai import OpenAI
 
@@ -42,19 +41,11 @@ def env_post(path: str, payload: dict = None):
     return r.json()
 
 
-def env_get(path: str):
-    url = f"{ENV_URL}{path}"
-    r = requests.get(url)
-    r.raise_for_status()
-    return r.json()
-
-
 # ================================
 # RUN ONE DIFFICULTY EPISODE
 # ================================
 
 def run_episode(difficulty: str) -> float:
-    # Set difficulty then reset via standard /reset endpoint
     requests.post(f"{ENV_URL}/set_difficulty", params={"difficulty": difficulty})
     obs_data = env_post("/reset")
 
@@ -62,20 +53,22 @@ def run_episode(difficulty: str) -> float:
     step_num = 0
 
     while True:
-        # Build observation from current state
-        if isinstance(obs_data, dict):
-            email    = obs_data.get("email", "")
-            done     = obs_data.get("done", False)
-            reward   = obs_data.get("reward", 0.0)
-            remaining = obs_data.get("remaining", 0)
-        else:
+        if not isinstance(obs_data, dict):
             break
+
+        email = obs_data.get("email", "")
+        done = obs_data.get("done", False)
+        reward = obs_data.get("reward", 0.0)
+        remaining = obs_data.get("remaining", 0)
 
         if done:
             episode_rewards.append(reward)
             break
 
-        # Build prompt for LLM
+        # ✅ START BLOCK (PRINT BEFORE STEP 0 ACTION)
+        if step_num == 0:
+            print(f"[START] difficulty={difficulty} email={email} remaining={remaining}", flush=True)
+
         prompt = f"""You are an email task extractor. Given this email, extract the tasks as a short natural-language list.
 
 Email:
@@ -87,31 +80,13 @@ Respond with a single sentence listing the tasks and whether they need schedulin
 
         llm_response = call_llm(prompt)
 
-        # Mandatory [START] log
-        print(json.dumps({
-            "type": "[START]",
-            "difficulty": difficulty,
-            "step": step_num,
-            "email": email,
-            "remaining": remaining
-        }))
-
-        # Submit action
         action = {"message": llm_response}
         obs_data = env_post("/step", {"action": action})
 
         step_reward = obs_data.get("reward", 0.0) if isinstance(obs_data, dict) else 0.0
         episode_rewards.append(step_reward)
 
-        # Mandatory [STEP] log
-        print(json.dumps({
-            "type": "[STEP]",
-            "difficulty": difficulty,
-            "step": step_num,
-            "action": llm_response,
-            "reward": step_reward,
-            "done": obs_data.get("done", False) if isinstance(obs_data, dict) else True
-        }))
+        print(f"[STEP] difficulty={difficulty} step={step_num} reward={step_reward}", flush=True)
 
         step_num += 1
 
@@ -120,13 +95,7 @@ Respond with a single sentence listing the tasks and whether they need schedulin
 
     episode_score = round(sum(episode_rewards) / len(episode_rewards), 4) if episode_rewards else 0.0
 
-    # Mandatory [END] log
-    print(json.dumps({
-        "type": "[END]",
-        "difficulty": difficulty,
-        "episode_score": episode_score,
-        "steps": step_num
-    }))
+    print(f"[END] difficulty={difficulty} score={episode_score} steps={step_num}", flush=True)
 
     return episode_score
 
@@ -142,15 +111,7 @@ if __name__ == "__main__":
     for diff in difficulties:
         score = run_episode(diff)
         all_scores.append(score)
-        print(json.dumps({
-            "type": "[RESULT]",
-            "difficulty": diff,
-            "score": score
-        }))
+        print(f"[RESULT] difficulty={diff} score={score}", flush=True)
 
     overall = round(sum(all_scores) / len(all_scores), 4)
-    print(json.dumps({
-        "type": "[FINAL]",
-        "overall_score": overall,
-        "scores": dict(zip(difficulties, all_scores))
-    }))
+    print(f"[FINAL] overall_score={overall}", flush=True)
