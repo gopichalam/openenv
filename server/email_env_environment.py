@@ -202,7 +202,13 @@ def grade_multi(pred, expected):
         score += 0.15  # perfect answer bonus
 
     # Clamp score
-    score = max(0, min(1, round(score, 2)))
+    score = round(score, 2)
+    
+    # Ensure strict (0,1) range
+    if score <= 0:
+        score = 0.01
+    elif score >= 1:
+        score = 0.99
 
     return score, breakdown
 
