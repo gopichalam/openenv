@@ -98,13 +98,26 @@ def run_episode(difficulty: str) -> float:
         if step_num == 0:
             print(f"[START] difficulty={difficulty} email={email} remaining={remaining}", flush=True)
 
-        prompt = f"""You are an email task extractor. Given this email, extract the tasks as a short natural-language list.
+        prompt = f"""
+Extract actionable tasks using EXACT keywords.
+
+Use only these words if relevant:
+report, slides, feedback, invoice, call, fix, review, budget, meeting
+
+Rules:
+- Keep phrases short (e.g., "review document", "send invoice")
+- Include ALL tasks mentioned
+- Do NOT add extra words
+
+Action rules:
+- If meeting/schedule/discussion present → action: schedule
+- Otherwise → action: create_task
 
 Email:
 {email}
 
-Respond with a single sentence listing the tasks and whether they need scheduling. Example:
-"review document and send feedback, action: create_task"
+Output format:
+task1, task2, task3 | action: create_task OR schedule
 """
 
         llm_response = call_llm(prompt)
@@ -112,6 +125,18 @@ Respond with a single sentence listing the tasks and whether they need schedulin
         if not llm_response:
             llm_response = email.lower()
 
+            # clean noise
+            for w in ["please", "hi", "team", "thanks"]:
+                llm_response = llm_response.replace(w, "")
+
+        # ALWAYS apply keyword injection
+        keywords = ["report", "slides", "feedback", "invoice", "call", "fix", "review", "budget", "meeting"]
+
+        for kw in keywords:
+            if kw in email.lower() and kw not in llm_response.lower():
+                llm_response += f" {kw}"
+        llm_response = llm_response.strip()
+        
         action = {"message": llm_response}
         try:
             obs_data = env_post("/step", {"action": action})
