@@ -203,14 +203,13 @@ def grade_multi(pred, expected):
 
     # Clamp score
     score = round(score, 2)
-    
+
     # Ensure strict (0,1) range
     if score <= 0:
         score = 0.01
     elif score >= 1:
         score = 0.99
-
-    return score, breakdown
+        return score, breakdown
 
 
 # ---------------- ENV ---------------- #
